@@ -7,6 +7,10 @@ library(dplyr)
 library(ggplot2)
 library(sf)
 library(lubridate)
+library(shinythemes)
+library(ggthemes)
+library(shinythemes)
+library(kableExtra)
 
 gaps <- load(file = "VMSGaps/data/montlyGaps.rds")
 

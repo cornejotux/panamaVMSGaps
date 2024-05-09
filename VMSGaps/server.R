@@ -18,10 +18,13 @@ function(input, output, session) {
       sort(unique(montlyGaps[montlyGaps$month == input$mes,]$ssvid ))
     })
     output$selectUIVessels <- renderUI({
+      req(input$mes)
       selectInput("vessel", "Barcos", searchVessel())
     })
 
-      output$distPlot <- renderPlot({
+    output$distPlot <- renderPlot({
+        req(input$mes)
+        req(input$vessel)
 
       allGaps <- montlyGaps
       gaps <- as.data.frame(allGaps) %>%
@@ -68,5 +71,28 @@ function(input, output, session) {
         theme_gfw_map() +
         theme(legend.position = "none")
     })
+
+
+    output$tbl <- function() ({
+      req(input$mes)
+      req(input$vessel)
+
+      allGaps <- montlyGaps
+      gaps <- as.data.frame(allGaps) %>%
+        filter(ssvid==input$vessel) %>%
+        filter(month == input$mes) %>%
+        mutate(lat = if_else(hours >= 5, NA, lat),
+               lon = if_else(hours >= 5, NA, lon)) %>%
+        distinct(lat, lon, speed, course, timestamp, hours,
+                 seg_id, ssvid)
+
+      gaps$time <- as.POSIXct(gaps$timestamp)
+
+      gaps %>%
+        kbl("html") %>%
+        kable_styling("striped", full_width = F)
+    })
+
+
 
 }
