@@ -11,8 +11,14 @@ library(shinythemes)
 library(ggthemes)
 library(shinythemes)
 library(kableExtra)
+library(shiny)
+library(sftrack)
+library(fishwatchr)
 
-gaps <- load(file = "VMSGaps/data/montlyGaps.rds")
+
+gaps <- load(file = "data/montlyGaps.rds")
+ais <- load(file="data/aisForGaps.rds")
+
 
 montlyGaps <- montlyGaps %>%
               mutate(month=month(timestamp, label = F))

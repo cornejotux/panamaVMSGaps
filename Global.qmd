@@ -32,8 +32,8 @@ con <- DBI::dbConnect(drv = bigrquery::bigquery(),
 
 # Get VMS data
 
-```{sql vms, connection=con, output.var="montlyGaps"}
-#{r eval=F}
+```{r eval=F}
+#{sql vms, connection=con, output.var="montlyGaps"}
 #
 
 with 
@@ -68,12 +68,93 @@ order by ssvid, timestamp
 ```
 
 ```{r}
-montlyGaps <- montlyGaps %>% 
-              select(-nnet_score, -distance_from_port_m, 
-                    -distance_from_shore_m, -elevation_m, 
-                    -source, -point, -geom_line)
-  
-save(montlyGaps, file="VMSGaps/data/montlyGaps.rds")
+# montlyGaps <- montlyGaps %>% 
+#               select(-nnet_score, -distance_from_port_m, 
+#                     -distance_from_shore_m, -elevation_m, 
+#                     -source, -point, -geom_line)
+#   
+#save(montlyGaps, file="VMSGaps/data/montlyGaps.rds")
 load(file="VMSGaps/data/montlyGaps.rds")
 
 ```
+
+# Get the AIS data for the VMS gaps
+
+## First, get the time range of the gap
+
+```{r}
+require(glue)
+require(DBI)
+require(RSQLite)
+timeRange <- montlyGaps %>% 
+  filter(hours >= 3)
+
+tt <- glue_sql("{timeRange*}", .con = con)
+
+vesselList <- unique(timeRange$ssvid)
+vessels <- glue_sql("{vesselList*}", .con = con)
+```
+
+Now I create a table in BQ so then I can use it to select the time window for the 
+AIS data.
+
+```{r}
+bq_tbl <- bq_table("world-fishing-827", "scratch_JorgeCornejo", "timeGapsVMSPanama")
+bq_table_delete(bq_tbl)
+bq_table_create(bq_tbl, timeRange)
+job <- bq_table_upload(x=bq_tbl,values=timeRange,
+                       quiet = FALSE)
+
+```
+
+
+## Now get AIS for the gaps
+
+```{r eval=F}
+#{sql vms, connection=con, output.var="aisxgaps"}
+#
+
+with
+  gaps as (
+    select * 
+    from `world-fishing-827.scratch_JorgeCornejo.timeGapsVMSPanama`
+  ),
+
+v as (
+  select DISTINCT ssvid as name
+  from gaps
+),
+
+vessel as (
+  SELECT #vessel_id, 
+         info.ssvid, shipname.value as fullName, n_shipname.value as n_name,
+         gaps.timestamp as gtime, gaps.hours as gapHours #, gaps.ssvid as name
+    FROM `world-fishing-827.pipe_ais_v3_published.vessel_info` as info
+    join gaps
+    on n_shipname.value = gaps.ssvid
+),
+
+m as (
+  SELECT fullName, n_name, mes.ssvid as ssvid, timestamp, lat, lon, gapHours
+  FROM `world-fishing-827.pipe_ais_v3_published.messages`  as mes
+  join vessel
+    on mes.ssvid = vessel.ssvid and
+     #on rp.seg_id = tp.seg_id and
+     timestamp BETWEEN DATE_ADD(gtime, INTERVAL -1 day)
+                      AND DATE_ADD(gtime, INTERVAL 1 day)
+    WHERE
+       TIMESTAMP_TRUNC(timestamp, DAY) >= TIMESTAMP("2024-01-01") 
+       #and mes.ssvid = "372770000"
+)
+
+ 
+select *
+from m
+```
+Now save an read the data, so we don't run the query every time.
+
+```{r}
+#save(aisxgaps, file="VMSGaps/data/aisForGaps.rds")
+load(file="VMSGaps/data/aisForGaps.rds")
+```
+
